@@ -15,7 +15,7 @@ RUN apt-get install -y netcat
 
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 
-RUN useradd --create-home --shell /bin/bash imas && \
+RUN useradd --create-home --shell /bin/bash --uid 1000 --gid 0 imas && \
     su - imas sh -c 'MODULEPATH=/opt/imas/etc/modulefiles module load IMAS; mkdir -p /home/imas/public/imasdb; command imasdb test'
 
 # Installation of MySQL from binary distribution
@@ -75,7 +75,7 @@ WORKDIR /home/imas
 RUN mkdir -p /home/imas/opt
 RUN mkdir -p /home/imas/opt/etc
 #COPY external/catalog_qt_2.tar /home/imas/opt/catalog_qt_2.tar
-COPY --chown=imas external/catalog_qt_2/ /home/imas/opt/catalog_qt_2/
+COPY --chown=imas:root external/catalog_qt_2/ /home/imas/opt/catalog_qt_2/
 WORKDIR /home/imas/opt
 #RUN tar xf catalog_qt_2.tar
 
@@ -84,7 +84,7 @@ WORKDIR /home/imas/opt
 # and run it
 # The reason for keeping this file outside of Dockerfile is that file itself is quite
 # large and, additionally, it depends on source layout.
-COPY --chown=imas scripts/compile-scripts/* /home/imas/opt/
+COPY --chown=imas:root scripts/compile-scripts/* /home/imas/opt/
 RUN chmod +x /home/imas/opt/compile-*.sh
 
 RUN /home/imas/opt/compile-common.sh /home/imas/opt/catalog_qt_2 && \
@@ -107,10 +107,10 @@ USER imas
 
 # Wrapper script is a convenient way of setting up IMAS env. variables and
 # running update process
-COPY --chown=imas scripts/catalogqt-update-process.sh /home/imas/opt/catalog_qt_2/client/catalog-ws-client/catalogqt-update-process.sh
+COPY --chown=imas:root scripts/catalogqt-update-process.sh /home/imas/opt/catalog_qt_2/client/catalog-ws-client/catalogqt-update-process.sh
 RUN chmod +x /home/imas/opt/catalog_qt_2/client/catalog-ws-client/catalogqt-update-process.sh
 
-COPY --chown=imas scripts/catalogqt-ws.sh /home/imas/opt/catalog_qt_2/server/catalog-ws-server/catalogqt-ws.sh
+COPY --chown=imas:root scripts/catalogqt-ws.sh /home/imas/opt/catalog_qt_2/server/catalog-ws-server/catalogqt-ws.sh
 RUN chmod +x /home/imas/opt/catalog_qt_2/server/catalog-ws-server/catalogqt-ws.sh
 
 # Install imas-inotify and dependencies
@@ -145,5 +145,42 @@ RUN  update-rc.d imas-inotify defaults
 COPY scripts/run.sh /opt/run.sh
 RUN chmod +x /opt/run.sh
 CMD /opt/run.sh
+
+# Add Dashboard UI
+
+# Install Dashboard requirements
+COPY external/dashboard-ui /home/imas/opt/dashboard-ui
+RUN apt-get install -y python-virtualenv
+
+# USER imas
+WORKDIR /home/imas/opt/dashboard-ui
+
+
+# install s6 init system
+COPY external/dashboard-ui/docker/base/s6-overlay-amd64.tar.gz /tmp/
+RUN tar xzf /tmp/s6-overlay-amd64.tar.gz -C / --exclude="./bin" && \
+    tar xzf /tmp/s6-overlay-amd64.tar.gz -C /usr ./bin && \
+    rm /tmp/s6-overlay-amd64.tar.gz
+
+# setup venv and install service arguments
+COPY --chown=imas:root external/dashboard-ui/modules/service-arguments /tmp/service-arguments
+RUN virtualenv /home/imas/opt/dashboard-ui/venv && \
+    /home/imas/opt/dashboard-ui/venv/bin/pip install --no-cache-dir /tmp/service-arguments && \
+    rm -rf /tmp/service-arguments && \
+    mkdir -p /etc/arguments
+
+# copy files
+COPY external/dashboard-ui/docker/base/01-activate-services-initial external/dashboard-ui/docker/base/02-arguments-initial /etc/cont-init.d/
+COPY external/dashboard-ui/docker/base/shutdown-container external/dashboard-ui/docker/base/wait-for-port /usr/local/bin/
+
+# tweaks needed to run a container as regular user
+RUN chmod -R g=u /etc/s6 /run \
+    && > /etc/s6/init/init-stage2-fixattrs.txt
+
+# regular user without superuser rights
+RUN chmod g=u /srv
+
+ENV ENABLE_ARGUMENTS=0 S6_BEHAVIOUR_IF_STAGE2_FAILS=2 S6_READ_ONLY_ROOT=1
+
 
 
