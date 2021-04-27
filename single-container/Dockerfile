@@ -150,37 +150,73 @@ CMD /opt/run.sh
 
 # Install Dashboard requirements
 COPY external/dashboard-ui /home/imas/opt/dashboard-ui
-RUN apt-get install -y python-virtualenv
+# RUN apt-get install -y python-virtualenv
 
 # USER imas
-WORKDIR /home/imas/opt/dashboard-ui
+# WORKDIR /home/imas/opt/dashboard-ui
 
 
-# install s6 init system
-COPY external/dashboard-ui/docker/base/s6-overlay-amd64.tar.gz /tmp/
-RUN tar xzf /tmp/s6-overlay-amd64.tar.gz -C / --exclude="./bin" && \
-    tar xzf /tmp/s6-overlay-amd64.tar.gz -C /usr ./bin && \
-    rm /tmp/s6-overlay-amd64.tar.gz
+# # install s6 init system
+# COPY external/dashboard-ui/docker/base/s6-overlay-amd64.tar.gz /tmp/
+# RUN tar xzf /tmp/s6-overlay-amd64.tar.gz -C / --exclude="./bin" && \
+#     tar xzf /tmp/s6-overlay-amd64.tar.gz -C /usr ./bin && \
+#     rm /tmp/s6-overlay-amd64.tar.gz
 
-# setup venv and install service arguments
-COPY --chown=imas:root external/dashboard-ui/modules/service-arguments /tmp/service-arguments
-RUN virtualenv /home/imas/opt/dashboard-ui/venv && \
-    /home/imas/opt/dashboard-ui/venv/bin/pip install --no-cache-dir /tmp/service-arguments && \
-    rm -rf /tmp/service-arguments && \
-    mkdir -p /etc/arguments
+# # setup venv and install service arguments
+# COPY --chown=imas:root external/dashboard-ui/modules/service-arguments /tmp/service-arguments
+# RUN virtualenv /home/imas/opt/dashboard-ui/venv && \
+#     /home/imas/opt/dashboard-ui/venv/bin/pip install --no-cache-dir /tmp/service-arguments && \
+#     rm -rf /tmp/service-arguments && \
+#     mkdir -p /etc/arguments
 
 # copy files
 COPY external/dashboard-ui/docker/base/01-activate-services-initial external/dashboard-ui/docker/base/02-arguments-initial /etc/cont-init.d/
 COPY external/dashboard-ui/docker/base/shutdown-container external/dashboard-ui/docker/base/wait-for-port /usr/local/bin/
 
-# tweaks needed to run a container as regular user
-RUN chmod -R g=u /etc/s6 /run \
-    && > /etc/s6/init/init-stage2-fixattrs.txt
+# # tweaks needed to run a container as regular user
+# RUN chmod -R g=u /etc/s6 /run \
+#     && > /etc/s6/init/init-stage2-fixattrs.txt
 
-# regular user without superuser rights
-RUN chmod g=u /srv
+# # regular user without superuser rights
+# RUN chmod g=u /srv
 
-ENV ENABLE_ARGUMENTS=0 S6_BEHAVIOUR_IF_STAGE2_FAILS=2 S6_READ_ONLY_ROOT=1
+RUN mkdir -p /usr/local/nvm
 
+ENV ENABLE_ARGUMENTS=1
 
+ENV ENV_JS_DIR=/srv/public NVM_DIR=/usr/local/nvm NODE_VERSION=v12.16.3 NODE_PATH=/srv/node_modules NO_UPDATE_NOTIFIER=1 NODE_OPTIONS="--max-old-space-size=4096"
+ENV STATIC_RESOURCES_LOCATION=static
 
+RUN ln -s /etc/bash.bashrc /etc/bashrc 
+
+# Install nvm with node and npm
+RUN curl https://raw.githubusercontent.com/creationix/nvm/v0.35.3/install.sh | PROFILE=/etc/bashrc bash \
+    && . $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && nvm use default \
+    && nvm install-latest-npm
+
+WORKDIR /srv
+
+EXPOSE 9100
+
+COPY external/dashboard-ui/docker/devel/npm-start/service /etc/available.d/npm-start
+COPY external/dashboard-ui/docker/devel/auto-npm /usr/local/bin/
+COPY external/dashboard-ui/docker/devel/npm external/dashboard-ui/docker/devel/node /usr/bin/
+COPY external/dashboard-ui/docker/common/envjs/arguments /etc/arguments/envjs
+
+COPY external/dashboard-ui/package.json /srv/package.json
+RUN ls -la /srv/
+RUN auto-npm 10-npm /srv/package.json /srv/packageCache.json
+
+COPY external/dashboard-ui/scripts /srv/scripts
+COPY external/dashboard-ui/config /srv/config
+COPY external/dashboard-ui/public /srv/public
+COPY external/dashboard-ui/.eslintrc.json /srv/.eslintrc.json
+COPY external/dashboard-ui/babel.config.json /srv/babel.config.json
+
+# needed to write env.js in tests by regular user
+RUN chmod g=u /srv/public
+
+COPY src /srv/src
