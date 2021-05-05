@@ -170,7 +170,10 @@ COPY external/dashboard-ui/docker/devel/npm external/dashboard-ui/docker/devel/n
 COPY external/dashboard-ui/docker/common/envjs/arguments /etc/arguments/envjs
 
 COPY external/dashboard-ui/package.json /srv/package.json
+# Symlink + mkdir for auto-npm compatibility
+RUN ln -s /etc/bash.bashrc /etc/bashrc 
 RUN mkdir -p /etc/cont-init.d/
+# stops on exec, why? / 4 min build? / stuck on npm install -d --no-save
 RUN auto-npm 10-npm /srv/package.json /srv/packageCache.json
 
 COPY external/dashboard-ui/scripts /srv/scripts
