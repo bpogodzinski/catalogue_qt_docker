@@ -147,26 +147,26 @@ RUN chmod +x /opt/run.sh
 CMD /opt/run.sh
 
 # Add Dashboard UI
-# RUN mkdir -p /usr/local/nvm
+RUN mkdir -p /usr/local/nvm
 
 ENV ENABLE_ARGUMENTS=1
 
-ENV ENV_JS_DIR=/srv/public NVM_DIR=/usr/local/nvm NO_UPDATE_NOTIFIER=1 NODE_OPTIONS="--max-old-space-size=4096"
+ENV ENV_JS_DIR=/srv/public NVM_DIR=/usr/local/nvm NODE_VERSION=v12.16.3 NODE_PATH=/srv/node_modules NO_UPDATE_NOTIFIER=1 NODE_OPTIONS="--max-old-space-size=4096"
 ENV STATIC_RESOURCES_LOCATION=static
 
 # Install nvm with node and npm
-# RUN curl https://raw.githubusercontent.com/creationix/nvm/v0.35.3/install.sh | PROFILE=/etc/bash.bashrc bash \
-#     && . $NVM_DIR/nvm.sh \
-#     && nvm install $NODE_VERSION \
-#     && nvm alias default $NODE_VERSION \
-#     && nvm use default \
-#     && nvm install-latest-npm
+RUN curl https://raw.githubusercontent.com/creationix/nvm/v0.35.3/install.sh | PROFILE=/etc/bash.bashrc bash \
+    && . $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && nvm use default \
+    && nvm install-latest-npm
 
 WORKDIR /srv
 
 COPY external/dashboard-ui/docker/devel/npm-start/service /etc/available.d/npm-start
 COPY external/dashboard-ui/docker/devel/auto-npm /usr/local/bin/
-COPY external/dashboard-ui/docker/devel/npm external/dashboard-ui/docker/devel/node /usr/bin/
+# COPY external/dashboard-ui/docker/devel/npm external/dashboard-ui/docker/devel/node /usr/bin/
 COPY external/dashboard-ui/docker/common/envjs/arguments /etc/arguments/envjs
 
 COPY external/dashboard-ui/package.json /srv/package.json
@@ -182,14 +182,12 @@ RUN chmod g=u /srv/public
 COPY external/dashboard-ui/src /srv/src
 
 # Symlink + mkdir for auto-npm compatibility
-RUN ln -s /etc/bash.bashrc /etc/bashrc 
 RUN mkdir -p /etc/cont-init.d/
 # stops on exec, why? / 4 min build? / stuck on npm install -d --no-save
 RUN cd /srv
+# RUN bash -c "curl -qL https://www.npmjs.com/install.sh | sh"
 # RUN auto-npm 10-npm /srv/package.json /srv/packageCache.json
-RUN apt-get install nodejs npm -y
-# RUN npm config set registry http://registry.npmjs.org/
-RUN npm install -g npm
+ENV PATH="/usr/local/nvm/versions/node/${NODE_VERSION}/bin:${PATH}"
 RUN npm install -d --no-save
 RUN cp /srv/package.json /srv/packageCache.json
 
